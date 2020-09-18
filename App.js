@@ -1,10 +1,20 @@
 import { StatusBar } from 'expo-status-bar'
-import React, { useEffect } from 'react'
-import { StyleSheet, Text, View, Button } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { StyleSheet, View, Button } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import * as Permissions from 'expo-permissions'
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => {
+    return {
+      shouldShowAlert: true
+    }
+  }
+})
+
 export default function App() {
+  const [pushToken, setPushToken] = useState()
+
   useEffect(() => {
     Permissions.getAsync(Permissions.NOTIFICATIONS).then(
       (statusObject) => {
@@ -15,22 +25,66 @@ export default function App() {
       }
     ).then(
       (statusObject) => {
+        console.log(statusObject)
         if (statusObject.status !== 'granted') {
-          return
+          throw new Error('Permission not granted!')
         }
       }
-    )
+    ).then(
+      () => {
+        return Notifications.getExpoPushTokenAsync()
+      }
+    ).then(
+      (reponse) => {
+        const pushToken = reponse.data
+        setPushToken(pushToken)
+      }
+    ).catch((err) => {
+      console.log(err)
+      return null
+    })
   }, [])
 
+  useEffect(() => {
+    const bgSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log(response)
+    })
+    const fgSubscription = Notifications.addNotificationReceivedListener( (notification) => {
+      console.log(notification)
+    })
+
+    return () => {
+      bgSubscription.remove()
+      fgSubscription.remove()
+    }
+  })
+
   const triggerNotificationHandler = () => {
-    Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'My first local notification',
-        body: 'This is the first local notification we are sending!',
+    // Local Notifications
+    // Notifications.scheduleNotificationAsync({
+    //   content: {
+    //     title: 'My first local notification',
+    //     body: 'This is the first local notification we are sending!',
+    //     data: { mySpecialData: 'Some text'}
+    //   },
+    //   trigger: {
+    //     seconds: 10,
+    //   }
+    // })
+    // Remote Notifications
+    fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
       },
-      trigger: {
-        seconds: 10,
-      }
+      body: JSON.stringify({
+        to: pushToken,
+        data: {extraData: 'Some data'},
+        title: 'Sent via the app',
+        body: 'This push notification was sent via the app!',
+      })
     })
   }
 
